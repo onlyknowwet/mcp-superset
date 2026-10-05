@@ -230,13 +230,20 @@ class CookieAuthManager:
         Returns:
             A CSRF token string.
         """
-        if self._csrf_token:
+        if self._csrf_token is not None:
             return self._csrf_token
         url = f"{self.base_url}/api/v1/security/csrf_token/"
         headers = {"Cookie": self._cookie_header(), "Referer": self.base_url}
-        resp = await client.get(url, headers=headers)
-        resp.raise_for_status()
-        self._csrf_token = resp.json()["result"]
+        try:
+            resp = await client.get(url, headers=headers)
+            resp.raise_for_status()
+            self._csrf_token = resp.json()["result"]
+        except httpx.HTTPStatusError:
+            # ponytail: some SSO/reverse-proxy setups (e.g. Pomerium-fronted
+            # Superset) block this endpoint for non-browser requests, and
+            # their own SSO session page renders an empty csrf_token too —
+            # fall back to the same empty token the browser submits.
+            self._csrf_token = ""
         return self._csrf_token
 
     def invalidate(self) -> None:
